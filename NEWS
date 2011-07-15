@@ -1,0 +1,108 @@
+% xmobar - Release notes
+% Jose A. Ortega Ruiz
+
+## Version 0.13 (March 28, 2011)
+
+_New features_
+
+  - New `Volume` monitor displaying ALSA soundcards information, by
+    Thomas Tuegel.
+  - New `ThermalZone` plugin substituting `Thermal` and using linux's
+    *sysfs* interface (you need this one if you're using a kernel
+    version equal to or above 2.6.37). See [issue 44].
+  - xmobar app new has WM_CLASS, WM_NAME and _NET_WM_PID xprops
+    ([issue 38]).
+
+_Incompatible changes_
+
+  - The MPD plugin does not accept host and port options anymore: use
+    the environment variables MPD_HOST and MPD_PORT instead.
+  - The `Mail` plugin now takes a second parameter (a string)
+    specifying its alias. As a side-effect, this solves [issue 30].
+
+_Bug fixes_
+
+  - [issue 14]: `StdinReader` and other plugins accepting external
+    input don't get confused anymore when characters from `alignSep`
+    appear in their input.
+  - [issue 27]: `BottomSize` placement now respects its width argument.
+  - [issue 28]: Compilation in Mac OS X fixed.
+  - [issue 30]: `Mail` plugin can be specified anywhere in commands list.
+  - [issue 36]: Battery monitor now supports non-standard locations of
+    the `/sys/class/power_supply/AC/online` file.
+  - [issue 40]: Battery monitor now supports the new power_now, that
+    replaces current_now in linux kernels for v. 2.36 and above.
+  - [issue 42]: More accurate net monitor rates.
+  - DiskIO, Cpu and MultiCpu monitors are also more accurate now.
+  - Text is now correctly centered vertically.
+  - `FullBM` border spec fixed.
+
+[issue 14]: http://code.google.com/p/xmobar/issues/detail?id=14
+[issue 27]: http://code.google.com/p/xmobar/issues/detail?id=27
+[issue 28]: http://code.google.com/p/xmobar/issues/detail?id=28
+[issue 30]: http://code.google.com/p/xmobar/issues/detail?id=30
+[issue 36]: http://code.google.com/p/xmobar/issues/detail?id=36
+[issue 38]: http://code.google.com/p/xmobar/issues/detail?id=38
+[issue 40]: http://code.google.com/p/xmobar/issues/detail?id=40
+[issue 42]: http://code.google.com/p/xmobar/issues/detail?id=42
+[issue 44]: http://code.google.com/p/xmobar/issues/detail?id=44
+
+## Version 0.12 (Dec 24, 2010)
+
+xmobar has a new [maintainer], a new [website], a new [mailing
+list] and uses a new [source code repository].
+
+Many thanks to Andrea Rossato, xmobar's author and maintainer so far,
+for creating xmobar in the first place, and for giving me the chance
+to become its maintainer. And a big thanks to Ben Boeckel, Petr Rockai
+and Norbert Zeh for their patches.
+
+[website]: http://projects.haskell.org/xmobar/
+[mailing list]: http://projects.haskell.org/cgi-bin/mailman/listinfo/xmobar
+[source code repository]: https://github.com/jaor/xmobar
+[maintainer]: http://hacks-galore.org/jao/
+
+_New features_
+
+  - Window borders: configuration options `border` and `borderColor`
+    allow drawing borders around xmobar's window.
+  - New monitor, `Uptime`, showing the system uptime.
+  - New monitor argument (`-S`) to enable displaying the `%` symbol in
+    percentages or other suffixes (e.g., units in Uptime and Network);
+    the symbol is now never included by default.
+  - New 'run once' commands, by specifying a 0 refresh rate in `Run
+    Com` ([issue 26]).
+  - MPD monitor: updated to libmpd 1.5. New fields `ppos` (playlist
+    position) and `remaining` (remaining time). New configuration
+    options to specify MPD's host, user name and password.
+  - Battery monitor: new `watts` and `timeleft` fields (Petr Rockai),
+    and specific arguments to control coloring and thresholds of the
+    former.
+  - MultiCPU monitor: new `auto*` fields that automatically detect all
+    present CPUs (Ben Boeckel).
+  - CpuFreq monitor uses just one decimal digit for GHz values (Petr
+    Rockai).
+  - Mail plugin expands paths starting with "~/" (Ben Boeckel). Ditto
+    MBox.
+  - Weather monitor now skips not retrieved fields, instead of
+    displaying a long error message.
+  - New compilation flag, `all_extensions`.
+  - Documentation and website updates.
+
+_Bug fixes_
+
+  - [issue 23]: Wireless monitor is now compatible with iwlib 29.
+  - [issue 24]: Swap monitor's used ratio display fixed.
+  - [issue 25]: Percentages only include `%` if requested using `-P`.
+  - [issue 31]: MPD monitor now respects `-W` argument.
+  - Fixes in CPU frequency formatting, string alignment and colour
+    boxes in monitors (Norbert Zeh).
+  - TopMem and TopProc now use the `-L` and `-H` options correctly for
+    memory template fields.
+  - MBox skips non-existent mbox paths instead of hanging.
+
+[issue 23]: http://code.google.com/p/xmobar/issues/detail?id=23
+[issue 24]: http://code.google.com/p/xmobar/issues/detail?id=24
+[issue 25]: http://code.google.com/p/xmobar/issues/detail?id=25
+[issue 26]: http://code.google.com/p/xmobar/issues/detail?id=26
+[issue 31]: http://code.google.com/p/xmobar/issues/detail?id=31
