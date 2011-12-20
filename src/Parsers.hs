@@ -87,7 +87,7 @@ templateParser = many . templateStringParser
 parseTemplate :: Config -> String -> IO [(Runnable,String,String)]
 parseTemplate c s =
     do str <- case parse (templateParser c) "" s of
-                Left _  -> return [("","","")]
+                Left _  -> return [("", s, "")]
                 Right x -> return x
        let cl = map alias (commands c)
            m  = Map.fromList $ zip cl (commands c)
@@ -159,7 +159,8 @@ parseConfig = runParser parseConf fields "Config" . stripComments
                      return ("Static {"  ++ p  ++ "}")
       tillFieldEnd = staticPos <|> many (noneOf ",}\n\r")
 
-      commandsEnd  = wrapSkip (string "]") >> oneOf "},"
+      commandsEnd  = wrapSkip (string "]") >> (string "}" <|> notNextRun)
+      notNextRun = do { string ","; notFollowedBy $ wrapSkip $ string "Run"; return ","} 
       readCommands = manyTill anyChar (try commandsEnd) >>= read' commandsErr . flip (++) "]"
 
       strField e n = field e n . between (strDel "start" n) (strDel "end" n) . many $ noneOf "\"\n\r"

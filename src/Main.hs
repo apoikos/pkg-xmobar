@@ -41,6 +41,7 @@ import Control.Monad (unless)
 -- | The main entry point
 main :: IO ()
 main = do
+  initThreads
   d   <- openDisplay ""
   args     <- getArgs
   (o,file) <- getOpts args
@@ -51,16 +52,12 @@ main = do
   unless (null defaultings) $ putStrLn $ "Fields missing from config defaulted: "
                                             ++ intercalate "," defaultings
 
-  -- listen for ConfigureEvents on the root window, for xrandr support:
-  rootw <- rootWindow d (defaultScreen d)
-  selectInput d rootw structureNotifyMask
-
   conf  <- doOpts c o
   fs    <- initFont d (font conf)
   cls   <- mapM (parseTemplate conf) (splitTemplate conf)
   vars  <- mapM (mapM startCommand) cls
   (r,w) <- createWin d fs conf
-  eventLoop (XConf d r w fs conf) vars
+  startLoop (XConf d r w fs conf) vars
 
 -- | Splits the template in its parts
 splitTemplate :: Config -> [String]
