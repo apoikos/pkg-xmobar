@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable, CPP #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Xmobar
@@ -29,28 +29,35 @@ module Xmobar
     , drawInWin, printStrings
     ) where
 
-import Prelude hiding (catch)
+import Prelude
 import Graphics.X11.Xlib hiding (textExtents, textWidth)
 import Graphics.X11.Xlib.Extras
 import Graphics.X11.Xinerama
+import Graphics.X11.Xrandr
 
 import Control.Arrow ((&&&))
 import Control.Monad.Reader
 import Control.Concurrent
 import Control.Concurrent.STM
-import Control.Exception hiding (handle)
+import Control.Exception (handle, SomeException(..))
 import Data.Bits
-import Data.Maybe(fromMaybe)
-import Data.Typeable (Typeable)
-import Foreign
-import System.Posix.Process (getProcessID)
-import System.Posix.Signals
 
 import Config
 import Parsers
 import Commands
 import Runnable
+import Signal
+import Window
 import XUtil
+import ColorCache
+
+#ifdef XFT
+import Graphics.X11.Xft
+#endif
+
+#ifdef DBUS
+import IPC.DBus
+#endif
 
 -- $main
 --
@@ -72,63 +79,68 @@ data XConf =
 runX :: XConf -> X () -> IO ()
 runX xc f = runReaderT f xc
 
-data WakeUp = WakeUp deriving (Show,Typeable)
-instance Exception WakeUp
-
-data SignalType = Wakeup | Reposition | ChangeScreen
-
 -- | Starts the main event loop and threads
-startLoop :: XConf -> [[(Maybe ThreadId, TVar String)]] -> IO ()
-startLoop xcfg@(XConf _ _ w _ _) vs = do
+startLoop :: XConf -> TMVar SignalType -> [[(Maybe ThreadId, TVar String)]] -> IO ()
+startLoop xcfg@(XConf _ _ w _ _) sig vs = do
+#ifdef XFT
+    xftInitFtLibrary
+#endif
     tv <- atomically $ newTVar []
-    sig <- setupSignalHandler
-    _ <- forkIO (checker tv [] vs sig `catch` \(SomeException _) -> putStrLn "Thread checker failed" >> return ())
-    _ <- forkOS (eventer sig `catch` \(SomeException _) -> putStrLn "Thread eventer failed" >> return ())
+    _ <- forkIO (handle (handler "checker") (checker tv [] vs sig))
+#ifdef THREADED_RUNTIME
+    _ <- forkOS (handle (handler "eventer") (eventer sig))
+#else
+    _ <- forkIO (handle (handler "eventer") (eventer sig))
+#endif
+#ifdef DBUS
+    runIPC sig
+#endif
     eventLoop tv xcfg sig
   where
+    handler thing (SomeException _) =
+      putStrLn ("Thread " ++ thing ++ " failed") >> return ()
     -- Reacts on events from X
     eventer signal =
-      alloca $ \ptrEventBase ->
-      alloca $ \ptrErrorBase ->
       allocaXEvent $ \e -> do
-
         dpy <- openDisplay ""
-        --  keyPressMask is the same value as RRScreenChangeNotifyMask
-        xrrSelectInput    dpy (defaultRootWindow dpy) keyPressMask
+        xrrSelectInput    dpy (defaultRootWindow dpy) rrScreenChangeNotifyMask
         selectInput       dpy w (exposureMask .|. structureNotifyMask)
 
-        _ <- xrrQueryExtension dpy ptrEventBase ptrErrorBase
-        xrrEventBase <- peek ptrEventBase
-
         forever $ do
+#ifdef THREADED_RUNTIME
           nextEvent dpy e
+#else
+          nextEvent' dpy e
+#endif
           ev <- getEvent e
           case ev of
-            ConfigureEvent {} -> putMVar signal Reposition
-            ExposeEvent {} -> putMVar signal Wakeup
-            _ ->
-              --  0 is the value of RRScreenChangeNotify
-              when ( (fromIntegral (ev_event_type ev) - xrrEventBase) == 0)
-                   $ putMVar signal Reposition
+            ConfigureEvent {} -> atomically $ putTMVar signal Reposition
+            ExposeEvent {} -> atomically $ putTMVar signal Wakeup
+            RRScreenChangeNotifyEvent {} -> atomically $ putTMVar signal Reposition
+            _ -> return ()
 
 -- | Send signal to eventLoop every time a var is updated
-checker :: TVar [String] -> [String] -> [[(Maybe ThreadId, TVar String)]] -> MVar SignalType -> IO ()
+checker :: TVar [String]
+           -> [String]
+           -> [[(Maybe ThreadId, TVar String)]]
+           -> TMVar SignalType
+           -> IO ()
 checker tvar ov vs signal = do
       nval <- atomically $ do
               nv <- mapM concatV vs
               guard (nv /= ov)
               writeTVar tvar nv
               return nv
-      putMVar signal Wakeup
+      atomically $ putTMVar signal Wakeup
       checker tvar nval vs signal
     where
       concatV = fmap concat . mapM (readTVar . snd)
 
 
 -- | Continuously wait for a signal from a thread or a interrupt handler
-eventLoop :: TVar [String] -> XConf -> MVar SignalType -> IO ()
-eventLoop tv xc@(XConf d _ w fs cfg) signal = do
-      typ <- takeMVar signal
+eventLoop :: TVar [String] -> XConf -> TMVar SignalType -> IO ()
+eventLoop tv xc@(XConf d r w fs cfg) signal = do
+      typ <- atomically $ takeTMVar signal
       case typ of
          Wakeup -> do
             runX xc (updateWin tv)
@@ -141,7 +153,38 @@ eventLoop tv xc@(XConf d _ w fs cfg) signal = do
             ncfg <- updateConfigPosition cfg
             reposWindow ncfg
 
+         Hide   t -> hide   (t*100*1000)
+         Reveal t -> reveal (t*100*1000)
+         Toggle t -> toggle t
+
+         TogglePersistent -> eventLoop
+            tv xc { config = cfg { persistent = not $ persistent cfg } } signal
+
     where
+        isPersistent = not $ persistent cfg
+
+        hide t
+            | t == 0 =
+                when isPersistent (hideWindow d w) >> eventLoop tv xc signal
+            | otherwise = do
+                void $ forkIO
+                     $ threadDelay t >> atomically (putTMVar signal $ Hide 0)
+                eventLoop tv xc signal
+
+        reveal t
+            | t == 0 = do
+                when isPersistent (showWindow r cfg d w)
+                eventLoop tv xc signal
+            | otherwise = do
+                void $ forkIO
+                     $ threadDelay t >> atomically (putTMVar signal $ Reveal 0)
+                eventLoop tv xc signal
+
+        toggle t = do
+            ismapped <- isMapped d w
+            atomically (putTMVar signal $ if ismapped then Hide t else Reveal t)
+            eventLoop tv xc signal
+
         reposWindow rcfg = do
           r' <- repositionWin d w fs rcfg
           eventLoop tv (XConf d r' w fs rcfg) signal
@@ -157,148 +200,24 @@ eventLoop tv xc@(XConf d _ w fs cfg) signal = do
             o ->
               return (ocfg {position = OnScreen 1 o})
 
-
--- | Signal handling
-setupSignalHandler :: IO (MVar SignalType)
-setupSignalHandler = do
-   tid   <- newEmptyMVar
-   installHandler sigUSR2 (Catch $ updatePosHandler tid) Nothing
-   installHandler sigUSR1 (Catch $ changeScreenHandler tid) Nothing
-   return tid
-
-updatePosHandler :: MVar SignalType -> IO ()
-updatePosHandler sig = do
-   putMVar sig Reposition
-   return ()
-
-changeScreenHandler :: MVar SignalType -> IO ()
-changeScreenHandler sig = do
-   putMVar sig ChangeScreen
-   return ()
-
 -- $command
 
 -- | Runs a command as an independent thread and returns its thread id
 -- and the TVar the command will be writing to.
-startCommand :: (Runnable,String,String) -> IO (Maybe ThreadId, TVar String)
-startCommand (com,s,ss)
+startCommand :: TMVar SignalType
+             -> (Runnable,String,String)
+             -> IO (Maybe ThreadId, TVar String)
+startCommand sig (com,s,ss)
     | alias com == "" = do var <- atomically $ newTVar is
                            atomically $ writeTVar var (s ++ ss)
                            return (Nothing,var)
     | otherwise       = do var <- atomically $ newTVar is
                            let cb str = atomically $ writeTVar var (s ++ str ++ ss)
                            h <- forkIO $ start com cb
+                           _ <- forkIO $ trigger com
+                                       $ maybe (return ()) (atomically . putTMVar sig)
                            return (Just h,var)
     where is = s ++ "Updating..." ++ ss
-
--- $window
-
--- | The function to create the initial window
-createWin :: Display -> XFont -> Config -> IO (Rectangle,Window)
-createWin d fs c = do
-  let dflt = defaultScreen d
-  srs     <- getScreenInfo d
-  rootw   <- rootWindow d dflt
-  (as,ds) <- textExtents fs "0"
-  let ht    = as + ds + 4
-      (r,o) = setPosition (position c) srs (fi ht)
-  win <- newWindow  d (defaultScreenOfDisplay d) rootw r o
-  setProperties r c d win srs
-  when (lowerOnStart c) (lowerWindow d win)
-  mapWindow         d win
-  return (r,win)
-
--- | Updates the size and position of the window
-repositionWin :: Display -> Window -> XFont -> Config -> IO (Rectangle)
-repositionWin d win fs c = do
-  srs     <- getScreenInfo d
-  (as,ds) <- textExtents fs "0"
-  let ht    = as + ds + 4
-      (r,_) = setPosition (position c) srs (fi ht)
-  moveResizeWindow d win (rect_x r) (rect_y r) (rect_width r) (rect_height r)
-  setProperties r c d win srs
-  return r
-
-setPosition :: XPosition -> [Rectangle] -> Dimension -> (Rectangle,Bool)
-setPosition p rs ht =
-  case p' of
-    Top -> (Rectangle rx ry rw h, True)
-    TopW a i -> (Rectangle (ax a i) ry (nw i) h, True)
-    TopSize a i ch -> (Rectangle (ax a i) ry (nw i) (mh ch), True)
-    Bottom -> (Rectangle rx ny rw h, True)
-    BottomW a i -> (Rectangle (ax a i) ny (nw i) h, True)
-    BottomSize a i ch  -> (Rectangle (ax a i) (ny' ch) (nw i) (mh ch), True)
-    Static cx cy cw ch -> (Rectangle (fi cx) (fi cy) (fi cw) (fi ch), True)
-    OnScreen _ p'' -> setPosition p'' [scr] ht
-  where
-    (scr@(Rectangle rx ry rw rh), p') =
-      case p of OnScreen i x -> (fromMaybe (head rs) $ safeIndex i rs, x)
-                _ -> (head rs, p)
-    ny       = ry + fi (rh - ht)
-    center i = rx + fi (div (remwid i) 2)
-    right  i = rx + fi (remwid i)
-    remwid i = rw - pw (fi i)
-    ax L     = const rx
-    ax R     = right
-    ax C     = center
-    pw i     = rw * (min 100 i) `div` 100
-    nw       = fi . pw . fi
-    h        = fi ht
-    mh h'    = max (fi h') h
-    ny' h'   = ry + fi (rh - mh h')
-    safeIndex i = lookup i . zip [0..]
-
-setProperties :: Rectangle -> Config -> Display -> Window -> [Rectangle] -> IO ()
-setProperties r c d w srs = do
-  a1 <- internAtom d "_NET_WM_STRUT_PARTIAL"    False
-  c1 <- internAtom d "CARDINAL"                 False
-  a2 <- internAtom d "_NET_WM_WINDOW_TYPE"      False
-  c2 <- internAtom d "ATOM"                     False
-  v  <- internAtom d "_NET_WM_WINDOW_TYPE_DOCK" False
-  p  <- internAtom d "_NET_WM_PID"              False
-
-  setTextProperty d w "xmobar" wM_CLASS
-  setTextProperty d w "xmobar" wM_NAME
-
-  changeProperty32 d w a1 c1 propModeReplace $ map fi $
-    getStrutValues r (position c) (getRootWindowHeight srs)
-  changeProperty32 d w a2 c2 propModeReplace [fromIntegral v]
-
-  getProcessID >>= changeProperty32 d w p c1 propModeReplace . return . fromIntegral
-
-getRootWindowHeight :: [Rectangle] -> Int
-getRootWindowHeight srs = foldr1 max (map getMaxScreenYCoord srs)
-  where
-    getMaxScreenYCoord sr = fi (rect_y sr) + fi (rect_height sr)
-
-getStrutValues :: Rectangle -> XPosition -> Int -> [Int]
-getStrutValues r@(Rectangle x y w h) p rwh =
-    case p of
-    OnScreen _ p'   -> getStrutValues r p' rwh
-    Top             -> [0, 0, st,  0, 0, 0, 0, 0, nx, nw,  0,  0]
-    TopW    _ _     -> [0, 0, st,  0, 0, 0, 0, 0, nx, nw,  0,  0]
-    TopSize      {} -> [0, 0, st,  0, 0, 0, 0, 0, nx, nw,  0,  0]
-    Bottom          -> [0, 0,  0, sb, 0, 0, 0, 0,  0,  0, nx, nw]
-    BottomW _ _     -> [0, 0,  0, sb, 0, 0, 0, 0,  0,  0, nx, nw]
-    BottomSize   {} -> [0, 0,  0, sb, 0, 0, 0, 0,  0,  0, nx, nw]
-    Static _ _ _ _  -> getStaticStrutValues p rwh
-    where st = fi y + fi h
-          sb = rwh - fi y
-          nx = fi x
-          nw = fi (x + fi w - 1)
-
--- get some reaonable strut values for static placement.
-getStaticStrutValues :: XPosition -> Int -> [Int]
-getStaticStrutValues (Static cx cy cw ch) rwh
-    -- if the yPos is in the top half of the screen, then assume a Top
-    -- placement, otherwise, it's a Bottom placement
-    | cy < (rwh `div` 2) = [0, 0, st,  0, 0, 0, 0, 0, xs, xe,  0,  0]
-    | otherwise          = [0, 0,  0, sb, 0, 0, 0, 0,  0,  0, xs, xe]
-    where st = cy + ch
-          sb = rwh - cy
-          xs = cx -- a simple calculation for horizontal (x) placement
-          xe = xs + cw
-getStaticStrutValues _ _ = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 updateWin :: TVar [String] -> X ()
 updateWin v = do
@@ -340,21 +259,6 @@ drawInWin (Rectangle _ _ wid ht) ~[left,center,right] = do
     -- resync
     io $ sync       d True
 
-drawBorder :: Border -> Display -> Drawable -> GC -> Pixel
-              -> Dimension -> Dimension -> IO ()
-drawBorder b d p gc c wi ht =  case b of
-  NoBorder -> return ()
-  TopB       -> drawBorder (TopBM 0) d p gc c w h
-  BottomB    -> drawBorder (BottomBM 0) d p gc c w h
-  FullB      -> drawBorder (FullBM 0) d p gc c w h
-  TopBM m    -> sf >> drawLine d p gc 0 (fi m) (fi w) 0
-  BottomBM m -> let rw = fi h - fi m in
-                 sf >> drawLine d p gc 0 rw (fi w) rw
-  FullBM m   -> let pad = 2 * fi m; mp = fi m in
-                 sf >> drawRectangle d p gc mp mp (w - pad) (h - pad)
-  where sf = setForeground d gc c
-        (w, h) = (wi - 1, ht - 1)
-
 -- | An easy way to print the stuff we need to print
 printStrings :: Drawable -> GC -> XFont -> Position
              -> Align -> [(String, String, Position)] -> X ()
@@ -365,8 +269,7 @@ printStrings dr gc fontst offs a sl@((s,c,l):xs) = do
   let (conf,d)             = (config &&& display) r
       Rectangle _ _ wid ht = rect r
       totSLen              = foldr (\(_,_,len) -> (+) len) 0 sl
-      fntsize              = fi (as + ds)
-      valign               = fi ht - 1 - (fi ht - fntsize) `div` 2
+      valign               = -1 + (fi ht + fi (as + ds)) `div` 2
       remWidth             = fi wid - fi totSLen
       offset               = case a of
                                C -> (remWidth + offs) `div` 2
@@ -375,8 +278,5 @@ printStrings dr gc fontst offs a sl@((s,c,l):xs) = do
       (fc,bc)              = case break (==',') c of
                                (f,',':b) -> (f, b           )
                                (f,    _) -> (f, bgColor conf)
-  withColors d [bc] $ \[bc'] -> do
-    io $ setForeground d gc bc'
-    io $ fillRectangle d dr gc offset 0 (fi l) ht
   io $ printString d dr fontst gc fc bc offset valign s
   printStrings dr gc fontst (offs + l) a xs

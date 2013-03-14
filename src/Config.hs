@@ -28,11 +28,13 @@ import {-# SOURCE #-} Runnable
 import Plugins.Monitors
 import Plugins.Date
 import Plugins.PipeReader
+import Plugins.BufferedPipeReader
 import Plugins.CommandReader
 import Plugins.StdinReader
 import Plugins.XMonadLog
 import Plugins.EWMH
 import Plugins.Kbd
+import Plugins.Locks
 
 #ifdef INOTIFY
 import Plugins.Mail
@@ -54,8 +56,12 @@ data Config =
            , position       :: XPosition  -- ^ Top Bottom or Static
            , border         :: Border     -- ^ NoBorder TopB BottomB or FullB
            , borderColor    :: String     -- ^ Border color
+           , hideOnStart    :: Bool       -- ^ Hide (Unmap) the window on
+                                          --   initialization
            , lowerOnStart   :: Bool       -- ^ Lower to the bottom of the
                                           --   window stack on initialization
+           , persistent     :: Bool       -- ^ Whether automatic hiding should
+                                          --   be enabled or disabled
            , commands       :: [Runnable] -- ^ For setting the command, the command arguments
                                           --   and refresh rate for the programs to run (optional)
            , sepChar        :: String     -- ^ The character to be used for indicating
@@ -94,7 +100,9 @@ defaultConfig =
            , position = Top
            , border = NoBorder
            , borderColor  = "#BFBFBF"
+           , hideOnStart  = False
            , lowerOnStart = True
+           , persistent   = False
            , commands = [ Run $ Date "%a %b %_d %Y * %H:%M:%S" "theDate" 10
                         , Run StdinReader]
            , sepChar  = "%"
@@ -113,7 +121,7 @@ infixr :*:
 -- the 'Runnable.Runnable' Read instance. To install a plugin just add
 -- the plugin's type to the list of types (separated by ':*:') appearing in
 -- this function's type signature.
-runnableTypes :: Command :*: Monitors :*: Date :*: PipeReader :*: CommandReader :*: StdinReader :*: XMonadLog :*: EWMH :*: Kbd :*:
+runnableTypes :: Command :*: Monitors :*: Date :*: PipeReader :*: BufferedPipeReader :*: CommandReader :*: StdinReader :*: XMonadLog :*: EWMH :*: Kbd :*: Locks :*:
 #ifdef INOTIFY
                  Mail :*: MBox :*:
 #endif
