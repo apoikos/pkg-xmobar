@@ -1,7 +1,7 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Plugins.Monitors.Net
--- Copyright   :  (c) 2011 Jose Antonio Ortega Ruiz
+-- Copyright   :  (c) 2011, 2012 Jose Antonio Ortega Ruiz
 --                (c) 2007-2010 Andrea Rossato
 -- License     :  BSD-style (see LICENSE)
 --
@@ -13,79 +13,108 @@
 --
 -----------------------------------------------------------------------------
 
-module Plugins.Monitors.Net (startNet) where
+module Plugins.Monitors.Net (
+                        startNet
+                      , startDynNet
+                      ) where
 
 import Plugins.Monitors.Common
 
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Time.Clock (UTCTime, getCurrentTime, diffUTCTime)
+import Control.Monad (forM, filterM)
+import System.Directory (getDirectoryContents, doesFileExist)
+import System.FilePath ((</>))
 
 import qualified Data.ByteString.Lazy.Char8 as B
 
 data NetDev = NA
-            | ND { netDev :: String
-                 , netRx :: Float
-                 , netTx :: Float
-                 } deriving (Eq,Show,Read)
+            | NI String
+            | ND String Float Float deriving (Eq,Show,Read)
 
 type NetDevRef = IORef (NetDev, UTCTime)
+
+-- The more information available, the better.
+-- Note that names don't matter. Therefore, if only the names differ,
+-- a compare evaluates to EQ while (==) evaluates to False.
+instance Ord NetDev where
+    compare NA NA              = EQ
+    compare NA _               = LT
+    compare _  NA              = GT
+    compare (NI _) (NI _)      = EQ
+    compare (NI _) (ND _ _ _)  = LT
+    compare (ND _ _ _) (NI _)  = GT
+    compare (ND _ x1 y1) (ND _ x2 y2) =
+        if downcmp /= EQ
+           then downcmp
+           else y1 `compare` y2
+      where downcmp = x1 `compare` x2
 
 netConfig :: IO MConfig
 netConfig = mkMConfig
     "<dev>: <rx>KB|<tx>KB"      -- template
     ["dev", "rx", "tx", "rxbar", "txbar"]     -- available replacements
 
--- Given a list of indexes, take the indexed elements from a list.
-getNElements :: [Int] -> [a] -> [a]
-getNElements ns as = map (as!!) ns
+operstateDir :: String -> FilePath
+operstateDir d = "/sys/class/net" </> d </> "operstate"
 
--- Split into words, with word boundaries indicated by the given predicate.
--- Drops delimiters.  Duplicates 'Data.List.Split.wordsBy'.
---
--- > map (wordsBy (`elem` " :")) ["lo:31174097 31174097", "eth0:  43598 88888"]
---
--- will become @[["lo","31174097","31174097"], ["eth0","43598","88888"]]@
-wordsBy :: (a -> Bool) -> [a] -> [[a]]
-wordsBy f s = case dropWhile f s of
-    [] -> []
-    s' -> w : wordsBy f s'' where (w, s'') = break f s'
+existingDevs :: IO [String]
+existingDevs = getDirectoryContents "/sys/class/net" >>= filterM isDev
+  where isDev d | d `elem` excludes = return False
+                | otherwise = doesFileExist (operstateDir d)
+        excludes = [".", "..", "lo"]
 
-readNetDev :: [String] -> NetDev
-readNetDev [] = NA
-readNetDev xs =
-    ND (head xs) (r (xs !! 1)) (r (xs !! 2))
-       where r s | s == "" = 0
-                 | otherwise = read s / 1024
+isUp :: String -> IO Bool
+isUp d = do
+  operstate <- B.readFile (operstateDir d)
+  return $ "up" == (B.unpack . head . B.lines) operstate
 
-fileNet :: IO [NetDev]
-fileNet = netParser `fmap` B.readFile "/proc/net/dev"
+readNetDev :: [String] -> IO NetDev
+readNetDev (d:x:y:_) = do
+  up <- isUp d
+  return (if up then ND d (r x) (r y) else NI d)
+    where r s | s == "" = 0
+              | otherwise = read s / 1024
+
+readNetDev _ = return NA
+
+netParser :: B.ByteString -> IO [NetDev]
+netParser = mapM (readNetDev . splitDevLine) . readDevLines
+  where readDevLines = drop 2 . B.lines
+        splitDevLine = selectCols . wordsBy (`elem` " :") . B.unpack
+        selectCols cols = map (cols!!) [0,1,9]
+        wordsBy f s = case dropWhile f s of
+          [] -> []
+          s' -> w : wordsBy f s'' where (w, s'') = break f s'
 
 findNetDev :: String -> IO NetDev
 findNetDev dev = do
-  nds <- fileNet
-  case filter (\d -> netDev d == dev) nds of
+  nds <- B.readFile "/proc/net/dev" >>= netParser
+  case filter isDev nds of
     x:_ -> return x
     _ -> return NA
-
-netParser :: B.ByteString -> [NetDev]
-netParser =
-    map (readNetDev . getNElements [0,1,9] . wordsBy (`elem` " :") . B.unpack) . drop 2 . B.lines
+  where isDev (ND d _ _) = d == dev
+        isDev (NI d) = d == dev
+        isDev NA = False
 
 formatNet :: Float -> Monitor (String, String)
 formatNet d = do
     s <- getConfigValue useSuffix
-    let str = if s then (++"Kb/s") . showDigits 1 else showDigits 1
+    dd <- getConfigValue decDigits
+    let str = if s then (++"Kb/s") . showDigits dd else showDigits dd
     b <- showLogBar 0.9 d
     x <- showWithColors str d
     return (x, b)
 
 printNet :: NetDev -> Monitor String
 printNet nd =
-    case nd of
-         ND d r t -> do (rx, rb) <- formatNet r
-                        (tx, tb) <- formatNet t
-                        parseTemplate [d,rx,tx,rb,tb]
-         NA -> return "N/A"
+  case nd of
+    ND d r t -> do
+        (rx, rb) <- formatNet r
+        (tx, tb) <- formatNet t
+        parseTemplate [d,rx,tx,rb,tb]
+    NI _ -> return ""
+    NA -> return "N/A"
 
 parseNet :: NetDevRef -> String -> IO NetDev
 parseNet nref nd = do
@@ -95,14 +124,23 @@ parseNet nref nd = do
   writeIORef nref (n1, t1)
   let scx = realToFrac (diffUTCTime t1 t0)
       scx' = if scx > 0 then scx else 1
-      netRate f da db = takeDigits 2 $ (f db - f da) / scx'
-      diffRate NA _ = NA
-      diffRate _ NA = NA
-      diffRate da db = ND nd (netRate netRx da db) (netRate netTx da db)
+      rate da db = takeDigits 2 $ (db - da) / scx'
+      diffRate (ND d ra ta) (ND _ rb tb) = ND d (rate ra rb) (rate ta tb)
+      diffRate (NI d) _ = NI d
+      diffRate _ (NI d) = NI d
+      diffRate _ _ = NA
   return $ diffRate n0 n1
 
 runNet :: NetDevRef -> String -> [String] -> Monitor String
 runNet nref i _ = io (parseNet nref i) >>= printNet
+
+parseNets :: [(NetDevRef, String)] -> IO [NetDev]
+parseNets = mapM $ \(ref, i) -> parseNet ref i
+
+runNets :: [(NetDevRef, String)] -> [String] -> Monitor String
+runNets refs _ = io (parseActive refs) >>= printNet
+    where parseActive refs' = parseNets refs' >>= return . selectActive
+          selectActive = maximum
 
 startNet :: String -> [String] -> Int -> (String -> IO ()) -> IO ()
 startNet i a r cb = do
@@ -110,3 +148,13 @@ startNet i a r cb = do
   nref <- newIORef (NA, t0)
   _ <- parseNet nref i
   runM a netConfig (runNet nref i) r cb
+
+startDynNet :: [String] -> Int -> (String -> IO ()) -> IO ()
+startDynNet a r cb = do
+  devs <- existingDevs
+  refs <- forM devs $ \d -> do
+            t <- getCurrentTime
+            nref <- newIORef (NA, t)
+            _ <- parseNet nref d
+            return (nref, d)
+  runM a netConfig (runNets refs) r cb

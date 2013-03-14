@@ -12,7 +12,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Plugins.Monitors.MPD ( mpdConfig, runMPD ) where
+module Plugins.Monitors.MPD ( mpdConfig, runMPD, mpdWait ) where
 
 import Plugins.Monitors.Common
 import System.Console.GetOpt
@@ -55,6 +55,10 @@ runMPD args = do
   s <- parseMPD status song opts
   parseTemplate s
 
+mpdWait :: IO ()
+mpdWait = M.withMPD idle >> return ()
+  where idle = M.idle [M.PlayerS, M.MixerS]
+
 mopts :: [String] -> IO MOpts
 mopts argv =
   case getOpt Permute options argv of
@@ -91,10 +95,10 @@ parseSong (Right Nothing) = return $ repeat ""
 parseSong (Right (Just s)) =
   let join [] = ""
       join (x:xs) = foldl (\a o -> a ++ ", " ++ o) x xs
-      str sel = maybe "" join (M.sgGetTag sel s)
+      str sel = maybe "" (join . map M.toString) (M.sgGetTag sel s)
       sels = [ M.Name, M.Artist, M.Composer, M.Performer
              , M.Album, M.Title, M.Track, M.Genre ]
-      fields = M.sgFilePath s : map str sels
+      fields = M.toString (M.sgFilePath s) : map str sels
   in mapM showWithPadding fields
 
 showTime :: Integer -> String
@@ -102,5 +106,5 @@ showTime t = int2str minutes ++ ":" ++ int2str seconds
   where minutes = t `div` 60
         seconds = t `mod` 60
 
-int2str :: (Num a, Ord a) => a -> String
+int2str :: (Show a, Num a, Ord a) => a -> String
 int2str x = if x < 10 then '0':sx else sx where sx = show x

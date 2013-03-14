@@ -1,4 +1,4 @@
-{-# LANGUAGE PatternGuards, CPP #-}
+{-# LANGUAGE PatternGuards #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -25,19 +25,10 @@ import Data.Maybe
 import Plugins.Monitors.Common
 import System.Directory
 
-#ifdef GHC6
-import Control.Monad.Reader
-
-instance (Monad f, Applicative f) => Applicative (ReaderT r f) where
-    pure a = ReaderT $ const (pure a)
-    f <*> a = ReaderT $ \r -> 
-              ((runReaderT f r) <*> (runReaderT a r))
-#endif
-
 checkedDataRetrieval :: (Ord a, Num a)
                      => String -> [String] -> Maybe (String, String -> Int)
                      -> (Double -> a) -> (a -> String) -> Monitor String
-checkedDataRetrieval msg path lbl trans fmt = liftM (maybe msg id) $
+checkedDataRetrieval msg path lbl trans fmt = liftM (fromMaybe msg) $
                                               retrieveData path lbl trans fmt
 
 retrieveData :: (Ord a, Num a)
@@ -64,9 +55,9 @@ data CompOrSep = Slash
 
 -- | Function to turn a list of of strings into a list of path components
 pathComponents :: [String] -> [Comp]
-pathComponents = joinComps . drop 2 . concat . intersperse [Space] . map splitParts
+pathComponents = joinComps . drop 2 . intercalate [Space] . map splitParts
   where
-    splitParts p | (l, _:r) <- break (== '/') p = (Comp l):Slash:splitParts r
+    splitParts p | (l, _:r) <- break (== '/') p = Comp l : Slash : splitParts r
                  | otherwise                    = [Comp p]
 
     joinComps = uncurry joinComps' . partition isComp
@@ -101,24 +92,24 @@ findFiles path lbl  =  catMaybes
                        )
   where
     addLabel (i, f) = maybe (return $ Just (f, Left i))
-                            (\(s, t) -> justIfExists f s t)
+                            (uncurry (justIfExists f))
                             lbl
 
     justIfExists f s t = let f' = take (length f - length s) f ++ s
-                         in  ifthen (Just (f, Right (f', t))) Nothing <$> (io $ doesFileExist f')
+                         in  ifthen (Just (f, Right (f', t))) Nothing <$> io (doesFileExist f')
 
     recFindFiles [] d  =  ifthen [d] []
-                      <$> (io $ if null d then return False else doesFileExist d)
+                      <$> io (if null d then return False else doesFileExist d)
     recFindFiles ps d  =  ifthen (recFindFiles' ps d) (return [])
-                      =<< (io $ if null d then return True else doesDirectoryExist d)
+                      =<< io (if null d then return True else doesDirectoryExist d)
 
     recFindFiles' []         _  =  error "Should not happen"
     recFindFiles' (Fix p:ps) d  =  recFindFiles ps (d ++ "/" ++ p)
     recFindFiles' (Var p:ps) d  =  concat
-                               <$> (     mapM (recFindFiles ps)
-                                      .  map (\f -> d ++ "/" ++ f)
-                                      .  filter (matchesVar p)
-                                     =<< (io $ getDirectoryContents d)
+                               <$> ((mapM (recFindFiles ps
+                                           . (\f -> d ++ "/" ++ f))
+                                      . filter (matchesVar p))
+                                     =<< io (getDirectoryContents d)
                                    )
 
     matchesVar []     _  = False
@@ -135,8 +126,8 @@ findFiles path lbl  =  catMaybes
 readFiles :: (String, Either Int (String, String -> Int))
           -> Monitor (Int, String)
 readFiles (fval, flbl) = (,) <$> either return (\(f, ex) -> liftM ex
-                                                          $ io $ readFile f) flbl
-                             <*> (io $ readFile fval)
+                                                            $ io $ readFile f) flbl
+                             <*> io (readFile fval)
 
 -- | Function that captures if-then-else
 ifthen :: a -> a -> Bool -> a

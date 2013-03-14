@@ -3,7 +3,7 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Xmobar.Plugins.Monitors
--- Copyright   :  (c) 2010, 2011 Jose Antonio Ortega Ruiz
+-- Copyright   :  (c) 2010, 2011, 2012 Jose Antonio Ortega Ruiz
 --                (c) 2007-10 Andrea Rossato
 -- License     :  BSD-style (see LICENSE)
 --
@@ -19,7 +19,7 @@ module Plugins.Monitors where
 
 import Plugins
 
-import Plugins.Monitors.Common ( runM )
+import Plugins.Monitors.Common (runM)
 import Plugins.Monitors.Weather
 import Plugins.Monitors.Net
 import Plugins.Monitors.Mem
@@ -40,37 +40,47 @@ import Plugins.Monitors.Wireless
 #endif
 #ifdef LIBMPD
 import Plugins.Monitors.MPD
+import Plugins.Monitors.Common (runMB)
 #endif
 #ifdef ALSA
 import Plugins.Monitors.Volume
 #endif
+#ifdef MPRIS
+import Plugins.Monitors.Mpris
+#endif
 
-data Monitors = Weather      Station    Args Rate
-              | Network      Interface  Args Rate
-              | BatteryP     [String]   Args Rate
-              | DiskU        DiskSpec   Args Rate
-              | DiskIO       DiskSpec   Args Rate
-              | Thermal      Zone       Args Rate
-              | ThermalZone  ZoneNo     Args Rate
-              | Memory       Args       Rate
-              | Swap         Args       Rate
-              | Cpu          Args       Rate
-              | MultiCpu     Args       Rate
-              | Battery      Args       Rate
-              | Brightness   Args       Rate
-              | CpuFreq      Args       Rate
-              | CoreTemp     Args       Rate
-              | TopProc      Args       Rate
-              | TopMem       Args       Rate
-              | Uptime       Args       Rate
+data Monitors = Weather      Station     Args Rate
+              | Network      Interface   Args Rate
+              | DynNetwork               Args Rate
+              | BatteryP     [String]    Args Rate
+              | DiskU        DiskSpec    Args Rate
+              | DiskIO       DiskSpec    Args Rate
+              | Thermal      Zone        Args Rate
+              | ThermalZone  ZoneNo      Args Rate
+              | Memory       Args        Rate
+              | Swap         Args        Rate
+              | Cpu          Args        Rate
+              | MultiCpu     Args        Rate
+              | Battery      Args        Rate
+              | Brightness   Args        Rate
+              | CpuFreq      Args        Rate
+              | CoreTemp     Args        Rate
+              | TopProc      Args        Rate
+              | TopMem       Args        Rate
+              | Uptime       Args        Rate
 #ifdef IWLIB
               | Wireless Interface  Args Rate
 #endif
 #ifdef LIBMPD
               | MPD      Args       Rate
+              | AutoMPD  Args
 #endif
 #ifdef ALSA
               | Volume   String     String Args Rate
+#endif
+#ifdef MPRIS
+              | Mpris1   String     Args Rate
+              | Mpris2   String     Args Rate
 #endif
                 deriving (Show,Read,Eq)
 
@@ -87,6 +97,7 @@ type DiskSpec  = [(String, String)]
 instance Exec Monitors where
     alias (Weather s _ _) = s
     alias (Network i _ _) = i
+    alias (DynNetwork _ _) = "dynnetwork"
     alias (Thermal z _ _) = z
     alias (ThermalZone z _ _) = "thermal" ++ show z
     alias (Memory _ _) = "memory"
@@ -108,11 +119,17 @@ instance Exec Monitors where
 #endif
 #ifdef LIBMPD
     alias (MPD _ _) = "mpd"
+    alias (AutoMPD _) = "autompd"
 #endif
 #ifdef ALSA
     alias (Volume m c _ _) = m ++ ":" ++ c
 #endif
+#ifdef MPRIS
+    alias (Mpris1 _ _ _) = "mpris1"
+    alias (Mpris2 _ _ _) = "mpris2"
+#endif
     start (Network  i a r) = startNet i a r
+    start (DynNetwork a r) = startDynNet a r
     start (Cpu a r) = startCpu a r
     start (MultiCpu a r) = startMultiCpu a r
     start (TopProc a r) = startTop a r
@@ -136,7 +153,12 @@ instance Exec Monitors where
 #endif
 #ifdef LIBMPD
     start (MPD a r) = runM a mpdConfig runMPD r
+    start (AutoMPD a) = runMB a mpdConfig runMPD mpdWait
 #endif
 #ifdef ALSA
     start (Volume m c a r) = runM a volumeConfig (runVolume m c) r
+#endif
+#ifdef MPRIS
+    start (Mpris1 s a r) = runM a mprisConfig (runMPRIS1 s) r
+    start (Mpris2 s a r) = runM a mprisConfig (runMPRIS2 s) r
 #endif

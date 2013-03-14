@@ -23,7 +23,7 @@ import Foreign.C.String
 import Data.ByteString (useAsCString)
 import Data.ByteString.Char8 (pack)
 
-#if  defined (__FreeBSD__) || defined (__OpenBSD__) ||  defined (__APPLE__)
+#if  defined (__FreeBSD__) || defined (__OpenBSD__) ||  defined (__APPLE__) || defined (__DragonFly__)
 #define IS_BSD_SYSTEM
 #endif
 
@@ -54,11 +54,11 @@ data CStatfs
 #ifdef IS_BSD_SYSTEM
 foreign import ccall unsafe "sys/mount.h statfs"
 #else
-foreign import ccall unsafe "sys/vfs.h statfs64"
+foreign import ccall unsafe "sys/statvfs.h statvfs"
 #endif
   c_statfs :: CString -> Ptr CStatfs -> IO CInt
 
-toI :: CLong -> Integer
+toI :: CULong -> Integer
 toI = toInteger
 
 getFileSystemStats :: String -> IO (Maybe FileSystemStats)
@@ -66,7 +66,7 @@ getFileSystemStats path =
   allocaBytes (#size struct statfs) $ \vfs ->
   useAsCString (pack path) $ \cpath -> do
     res <- c_statfs cpath vfs
-    if res == -1 then return Nothing
+    if res /= 0 then return Nothing
       else do
         bsize <- (#peek struct statfs, f_bsize) vfs
         bcount <- (#peek struct statfs, f_blocks) vfs

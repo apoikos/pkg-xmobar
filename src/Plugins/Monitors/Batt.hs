@@ -1,7 +1,7 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Plugins.Monitors.Batt
--- Copyright   :  (c) 2010, 2011 Jose A Ortega
+-- Copyright   :  (c) 2010, 2011, 2012 Jose A Ortega
 --                (c) 2010 Andrea Rossato, Petr Rockai
 -- License     :  BSD-style (see LICENSE)
 --
@@ -12,8 +12,6 @@
 -- A battery monitor for Xmobar
 --
 -----------------------------------------------------------------------------
-
-{-# LANGUAGE BangPatterns #-}
 
 module Plugins.Monitors.Batt ( battConfig, runBatt, runBatt' ) where
 
@@ -34,7 +32,7 @@ data BattOpts = BattOpts
   , lowThreshold :: Float
   , highThreshold :: Float
   , onlineFile :: FilePath
-  , chargeFile :: FilePath
+  , scale :: Float
   }
 
 defaultOpts :: BattOpts
@@ -48,7 +46,7 @@ defaultOpts = BattOpts
   , lowThreshold = -12
   , highThreshold = -10
   , onlineFile = "AC/online"
-  , chargeFile = "charge_full"
+  , scale = 1e6
   }
 
 options :: [OptDescr (BattOpts -> BattOpts)]
@@ -62,7 +60,7 @@ options =
   , Option "L" ["lowt"] (ReqArg (\x o -> o { lowThreshold = read x }) "") ""
   , Option "H" ["hight"] (ReqArg (\x o -> o { highThreshold = read x }) "") ""
   , Option "f" ["online"] (ReqArg (\x o -> o { onlineFile = x }) "") ""
-  , Option "c" ["charge"] (ReqArg (\x o -> o { chargeFile = x }) "") ""
+  , Option "s" ["scale"] (ReqArg (\x o -> o {scale = read x}) "") ""
   ]
 
 parseOpts :: [String] -> IO BattOpts
@@ -91,57 +89,57 @@ data Files = Files
 data Battery = Battery
   { full :: !Float
   , now :: !Float
-  , voltage :: !Float
-  , current :: !Float
+  , power :: !Float
   }
 
-safeFileExist :: String -> IO Bool
-safeFileExist f = handle noErrors $ fileExist f
+safeFileExist :: String -> String -> IO Bool
+safeFileExist d f = handle noErrors $ fileExist (d </> f)
   where noErrors = const (return False) :: SomeException -> IO Bool
 
-batteryFiles :: String -> String -> IO Files
-batteryFiles charge_file bat =
-  do is_charge <- safeFileExist $ prefix </> "charge_now"
-     is_energy <- safeFileExist $ prefix </> "energy_now"
-     is_current <- safeFileExist $ prefix </> "current_now"
+batteryFiles :: String -> IO Files
+batteryFiles bat =
+  do is_charge <- exists "charge_now"
+     is_energy <- if is_charge then return False else exists "energy_now"
+     is_current <- exists "current_now"
+     plain <- if is_charge then exists "charge_full" else exists "energy_full"
      let cf = if is_current then "current_now" else "power_now"
+         sf = if plain then "" else "_design"
      return $ case (is_charge, is_energy) of
-       (True, _) -> files "charge" cf
-       (_, True) -> files "energy" cf
+       (True, _) -> files "charge" cf sf
+       (_, True) -> files "energy" cf sf
        _ -> NoFiles
   where prefix = sysDir </> bat
-        files ch cf = Files { fFull = prefix </> charge_file
-                            , fNow = prefix </> ch ++ "_now"
-                            , fCurrent = prefix </> cf
-                            , fVoltage = prefix </> "voltage_now" }
+        exists = safeFileExist prefix
+        files ch cf sf = Files { fFull = prefix </> ch ++ "_full" ++ sf
+                               , fNow = prefix </> ch ++ "_now"
+                               , fCurrent = prefix </> cf
+                               , fVoltage = prefix </> "voltage_now" }
 
 haveAc :: FilePath -> IO Bool
 haveAc f =
   handle onError $ withFile (sysDir </> f) ReadMode (fmap (== "1") . hGetLine)
   where onError = const (return False) :: SomeException -> IO Bool
 
-readBattery :: Files -> IO Battery
-readBattery NoFiles = return $ Battery 0 0 0 0
-readBattery files =
-    do a <- grab $ fFull files -- microwatthours
+readBattery :: Float -> Files -> IO Battery
+readBattery _ NoFiles = return $ Battery 0 0 0
+readBattery sc files =
+    do a <- grab $ fFull files
        b <- grab $ fNow files
-       c <- grab $ fVoltage files -- microvolts
-       d <- grab $ fCurrent files -- microwatts (huh!)
-       return $ Battery (3600 * a / 1000000) -- wattseconds
-                        (3600 * b / 1000000) -- wattseconds
-                        (c / 1000000) -- volts
-                        (if c > 0 then (d / c) else -1) -- amperes
+       d <- grab $ fCurrent files
+       return $ Battery (3600 * a / sc) -- wattseconds
+                        (3600 * b / sc) -- wattseconds
+                        (d / sc) -- watts
     where grab f = handle onError $ withFile f ReadMode (fmap read . hGetLine)
           onError = const (return (-1)) :: SomeException -> IO Float
 
 readBatteries :: BattOpts -> [Files] -> IO Result
 readBatteries opts bfs =
-    do bats <- mapM readBattery (take 3 bfs)
+    do bats <- mapM (readBattery (scale opts)) (take 3 bfs)
        ac <- haveAc (onlineFile opts)
        let sign = if ac then 1 else -1
            ft = sum (map full bats)
            left = if ft > 0 then sum (map now bats) / ft else 0
-           watts = sign * sum (map voltage bats) * sum (map current bats)
+           watts = sign * sum (map power bats)
            time = if watts == 0 then 0 else sum $ map time' bats
            mwatts = if watts == 0 then 1 else sign * watts
            time' b = (if ac then full b - now b else now b) / mwatts
@@ -154,26 +152,28 @@ runBatt = runBatt' ["BAT0","BAT1","BAT2"]
 runBatt' :: [String] -> [String] -> Monitor String
 runBatt' bfs args = do
   opts <- io $ parseOpts args
-  c <- io $ readBatteries opts =<< mapM (batteryFiles (chargeFile opts)) bfs
+  c <- io $ readBatteries opts =<< mapM batteryFiles bfs
+  suffix <- getConfigValue useSuffix
+  d <- getConfigValue decDigits
   case c of
     Result x w t s ->
       do l <- fmtPercent x
-         parseTemplate (l ++ s:[fmtTime $ floor t, fmtWatts w opts])
+         parseTemplate (l ++ s:[fmtTime $ floor t, fmtWatts w opts suffix d])
     NA -> return "N/A"
   where fmtPercent :: Float -> Monitor [String]
         fmtPercent x = do
           p <- showPercentWithColors x
           b <- showPercentBar (100 * x) x
           return [b, p]
-        fmtWatts x o = color x o $ showDigits 1 x ++ "W"
+        fmtWatts x o s d = color x o $ showDigits d x ++ (if s then "W" else "")
         fmtTime :: Integer -> String
         fmtTime x = hours ++ ":" ++ if length minutes == 2
                                     then minutes else '0' : minutes
           where hours = show (x `div` 3600)
                 minutes = show ((x `mod` 3600) `div` 60)
-        maybeColor Nothing _ = ""
+        maybeColor Nothing str = str
         maybeColor (Just c) str = "<fc=" ++ c ++ ">" ++ str ++ "</fc>"
         color x o | x >= 0 = maybeColor (posColor o)
-                  | x >= highThreshold o = maybeColor (highWColor o)
-                  | x >= lowThreshold o = maybeColor (mediumWColor o)
+                  | -x >= highThreshold o = maybeColor (highWColor o)
+                  | -x >= lowThreshold o = maybeColor (mediumWColor o)
                   | otherwise = maybeColor (lowWColor o)

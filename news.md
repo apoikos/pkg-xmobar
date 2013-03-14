@@ -1,7 +1,93 @@
 % xmobar - Release notes
-% Jose A. Ortega Ruiz
 
-## Version 0.14
+## Version 0.16 (Dec 3, 2012)
+
+_New features_
+
+  - New monitor `AutoMPD`, which uses asynchronous events to display
+    MPD status (thanks to Ben Boeckel).
+  - New monitor `BufferedPipeReader` displaying data from multiple
+    pipes (thanks to Jochen Keil).
+  - New monitor `DynNetwork`, which detects the active interface
+    automatically, by Reto Hablützel
+  - New monitor, `Locks`, displaying the status of lock keys, by
+    Patrick Chilton.
+  - Extension for DBUS signal handling (Jochen Keil)
+  - Hide/Reveal: one can send signals to xmobar and make it (un)hide
+    itself (Jochen again).
+  - `PipeReader`'s default text is now configurable, by Reto Hablützel.
+  - Dependencies updated to latest mtl and libmpd (thanks to Sergei
+    Trofimovich).
+  - Dependencies on the deprecated dbus-core removed in favour of
+    dbus 0.10 (thanks to Jochen Keil).
+  - MPris2 now includes genre and composer among its fields.
+
+_Bug fixes_
+
+  - `DiskIO` now can report overall activity in all partitions of a device
+    which is not mounted itself (e.g., sda when sda1, sda3, etc. are
+    the mounted partitions).  Thanks to John Soros. See [github #73].
+  - `DiskU`, the disk usage monitor, works again correctly on Linux,
+    instead of randomly crashing every now and then, and reporting
+    wrong used size.
+  - When using antialiased fonts, we were causing a memory leak in the
+    X server by repeatedly allocating colors that, apparently, the
+    server doesn't know how to get rid of (even when told so!).  We're
+    caching them now and X server memory doesn't grow.
+  - Compilation errors and warnings with GHC 7.6 removed (thanks to
+    Raghavendra D Prabhu for his reports in [github #71]).
+
+_Known problems_
+
+Some users have reported problems with xmobar compiled with GHC 7.6 in
+ArchLinux: see [github #78] and pointers therein.  Please, send
+reports of any problems or successes in that regard so that we can fix
+any remaining issues.  Thanks!
+
+[github #71]: https://github.com/jaor/xmobar/issues/71
+[github #73]: https://github.com/jaor/xmobar/issues/73
+[github #78]: https://github.com/jaor/xmobar/issues/78
+
+## Version 0.15 (June 4, 2012)
+
+_Incompatible changes_
+
+  - `Batt` monitor no longer uses `-c` to specify the charge file: it
+    should figure things out by itself (cf. [issue 69]).
+
+_New features_
+
+  - New command line option, `-C`, that allows *adding* commands to
+    those specified in the configuration file (Ben Boeckel).
+  - Dependency on GHC's threaded runtime has been eliminated.
+  - New MPRIS (versions 1 and 2) monitor, by Artem Tarasov.
+  - New monitor option `-d` to specify the number of decimal places to
+    display for float numbers.  Defaults to 0. See [issue 58].
+  - New compilation option `--with_threaded`, to use GHC's threaded
+    runtime to compile xmobar.  Disabled by default (cf. discussion in
+    [github #36]).
+
+_Bug fixes_
+
+  - Stricter build dependencies versioning in cabal file.
+  - [issue 56]: vertical alignment of text improved.
+  - [issue 64]: display of `watts` in `Batt` monitor fixed.
+  - [issue 69]: miscellaneous battery reporting issues.
+  - [issue 67]: compilation in DragonFly.
+  - DiskIO works also when device path in mtab are symbolic links
+    to the real device file.
+  - Wireless monitor honours padding settings for ESSID names.
+  - CoreTemp monitor fixed for newer kernels ([github #38]).
+
+[issue 56]: http://code.google.com/p/xmobar/issues/detail?id=56
+[issue 58]: http://code.google.com/p/xmobar/issues/detail?id=58
+[issue 64]: http://code.google.com/p/xmobar/issues/detail?id=64
+[issue 67]: http://code.google.com/p/xmobar/issues/detail?id=67
+[issue 69]: http://code.google.com/p/xmobar/issues/detail?id=69
+[github #36]: https://github.com/jaor/xmobar/issues/38
+[github #38]: https://github.com/jaor/xmobar/issues/38
+
+## Version 0.14 (Dec 10, 2011)
 
 _New features_
 
@@ -13,7 +99,8 @@ _New features_
     guessed it.
   - Cpu monitor now also reports `iowait` field ([issue 55]).
   - Battery monitor: the full charge file is now settable in the
-    monitor arguments (olpc systems use charge_full_design; see [issue 62]).
+    monitor arguments (olpc systems use `charge_full_design`; see
+    [issue 62]).
 
 _Bug fixes_
 
