@@ -1,0 +1,11 @@
+/dist/
+/TAGS
+/IWlib.hs
+/StatFS.hs
+/XUtil.hs
+/src/IWlib.hs
+/src/StatFS.hs
+/src/XUtil.hs
+/web/index.html
+/web/releases.html
+/cabal-dev/
