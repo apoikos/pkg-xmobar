@@ -1,5 +1,32 @@
 % xmobar - Release notes
 
+## Version 0.17 (May 5, 2013)
+
+_New features_
+
+  - Icons support: it's now possible to insert bitmaps in the template
+    (Edward O'Callaghan, Alexander Polakov and Tomáš Janoušek).
+  - Initial support for reacting to mouse clicks (Alexander Polakov).
+  - New `TopP` and `BottomP` alignments, taking left and right
+    paddings (thanks to Dmitry Malikov).
+  - New `<freeratio>` field for memory monitor (Peter Simons).
+  - New `allDesktops` and `overrideRedirect` configuration options,
+    providing dock behaviour in tiling WMs (when set to True and False
+    respectively). Cf. discussion at [github #105].
+  - Experimental `-d` (start as a dock) option, may address [github #67]
+    in some window managers.
+
+_Bug fixes_
+
+  - Partial (as reports go) fix for [github #77].
+  - Safer volume plugin (Dmitry Malikov).
+  - Battery percentage capped at 100% (RJ Regenold).
+
+[github #67]: https://github.com/jaor/xmobar/issues/77
+[github #77]: https://github.com/jaor/xmobar/issues/77
+[github #105]: https://github.com/jaor/xmobar/issues/105
+
+
 ## Version 0.16 (Dec 3, 2012)
 
 _New features_

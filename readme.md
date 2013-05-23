@@ -3,15 +3,15 @@
 About
 =====
 
-xmobar is a minimalistic, text based, status bar. It was originally
-designed and implemented by Andrea Rossato to work with [xmonad],
-but it's actually usable with any window-manager.
+xmobar is a minimalistic, mostly text based, status bar. It was
+originally designed and implemented by Andrea Rossato to work with
+[xmonad], but it's actually usable with any window-manager.
 
 xmobar was inspired by the [Ion3] status bar, and supports similar
-features, like dynamic color management, output templates, and
+features, like dynamic color management, icons, output templates, and
 extensibility through plugins.
 
-This page documents xmobar 0.16 (see [release notes]).
+This page documents xmobar 0.17 (see [release notes]).
 
 [This screenshot] shows xmobar running under [sawfish], with
 antialiased fonts. And [this one] is my desktop with [xmonad] and two
@@ -188,6 +188,10 @@ For the output template:
 - `<fc=#FF0000>string</fc>` will print `string` with `#FF0000` color
   (red).
 
+- `<icon=/path/to/icon.xbm/>` will insert the given bitmap.
+
+- `<action=command>` will execute given command.
+
 Other configuration options:
 
 `font`
@@ -200,8 +204,10 @@ Other configuration options:
 :    Default font color.
 
 `position`
-:     Top, TopW, TopSize, Bottom, BottomW, BottomSize or Static (with x, y,
-      width and height).
+:     Top, TopP, TopW, TopSize, Bottom, BottomP, BottomW, BottomSize or Static
+      (with x, y, width and height).
+
+:     TopP and BottomP take 2 arguments: left padding and right padding.
 
 :     TopW and BottomW take 2 arguments: an alignment parameter (L for
       left, C for centered, R for Right) and an integer for the
@@ -217,6 +223,13 @@ Other configuration options:
 :          position = BottomW C 75
 
 :     to place xmobar at the bottom, centered with the 75% of the screen width.
+
+:     Or:
+
+:          position = BottomP 120 0
+
+:    to place xmobar at the bottom, with 120 pixel indent of the left.
+
 
 :     Or
 
@@ -234,9 +247,19 @@ Other configuration options:
       can be toggled manually (for example using the dbus interface) or
       automatically (by a plugin) to make it reappear.
 
+`allDesktops`
+:     When set to True (the default), xmobar will tell the window manager
+      explicitily to be shown in all desktops, by setting
+      `_NET_WM_DESKTOP` to 0xffffffff.
+
+`overrideRedirect`
+:     If you're running xmobar in a tiling window manager, you might need
+      to set this option to `False` so that it behaves as a docked
+      application.  Defaults to `True`.
+
 `persistent`
 :     When True the window status is fixed i.e. hiding or revealing is not
-      possible. This option can be toggled at runtime.
+      possible. This option can be toggled at runtime. Defaults to False.
 
 `border`
 :     TopB, TopBM, BottomB, BottomBM, FullB, FullBM or NoBorder (default).
@@ -299,6 +322,7 @@ xmobar --help):
       -F fg color   --fgcolor=fg color     The foreground color. Default grey
       -o            --top                  Place xmobar at the top of the screen
       -b            --bottom               Place xmobar at the bottom of the screen
+      -d            --dock                 Try to start xmobar as a dock
       -a alignsep   --alignsep=alignsep    Separators for left, center and right text
                                            alignment. Default: '}{'
       -s char       --sepchar=char         The character used to separate commands in
@@ -421,6 +445,19 @@ operating system to execute a program with the name found in the
 template. If the execution is not successful an error will be
 reported.
 
+It's possible to insert in the global templates icon directives of the
+form:
+
+     <icon=/path/to/bitmap.xbm/>
+
+which will produce the expected result.
+
+It's also possible to use action directives of the form:
+
+     <action=command>
+
+which will be executed when clicked on.
+
 ## The `commands` Configuration Option
 
 The `commands` configuration option is a list of commands information
@@ -437,7 +474,14 @@ Example:
     [Run Memory ["-t","Mem: <usedratio>%"] 10, Run Swap [] 10]
 
 to run the Memory monitor plugin with the specified template, and the
-swap monitor plugin, with default options, every second.
+swap monitor plugin, with default options, every second.  And here's
+an example of a template for the commands above using an icon:
+
+    template="<icon=/home/jao/.xmobar/mem.xbm/><memory> <swap>"
+
+This example will run "xclock" command when date is clicked:
+
+    template="<action=xclock>%date%</action>
 
 The only internal available command is `Com` (see below Executing
 External Commands). All other commands are provided by plugins. xmobar
@@ -445,10 +489,8 @@ comes with some plugins, providing a set of system monitors, a
 standard input reader, an Unix named pipe reader, a configurable date
 plugin, and much more: we list all available plugins below.
 
-To remove them see below Installing/Removing a Plugin
-
 Other commands can be created as plugins with the Plugin
-infrastructure. See below Writing a Plugin
+infrastructure. See below.
 
 ## System Monitor Plugins
 
@@ -645,7 +687,7 @@ something like:
 - Args: default monitor arguments
 - Variables that can be used with the `-t`/`--template` argument:
              `total`, `free`, `buffer`, `cache`, `rest`, `used`,
-             `usedratio`, `usedbar`, `freebar`
+             `usedratio`, `usedbar`, `freeratio`, `freebar`
 - Default template: `Mem: <usedratio>% (<cache>M)`
 
 ### `Swap Args RefreshRate`
@@ -756,8 +798,8 @@ something like:
 
 - Aliases to `disku`
 - Disks: list of pairs of the form (device or mount point, template),
-  where the template can contain <size>, <free>, <used>, <freep> or
-  <usedp>, <freebar> or <usedbar> for total, free, used, free
+  where the template can contain `<size>`, `<free>`, `<used>`, `<freep>` or
+  `<usedp>`, `<freebar>` or `<usedbar>` for total, free, used, free
   percentage and used percentage of the given file system capacity.
 - Args: default monitor arguments. `-t`/`--template` is ignored.
 - Default template: none (you must specify a template for each file system).
@@ -771,7 +813,7 @@ something like:
 
 - Aliases to `diskio`
 - Disks: list of pairs of the form (device or mount point, template),
-  where the template can contain <total>, <read>, <write> for total,
+  where the template can contain `<total>`, `<read>`, `<write>` for total,
   read and write speed, respectively.
 - Args: default monitor arguments. `-t`/`--template` is ignored.
 - Default template: none (you must specify a template for each file system).
@@ -1252,10 +1294,11 @@ the greater Haskell community.
 In particular, xmobar [incorporates patches] by Ben Boeckel, Roman
 Cheplyaka, Patrick Chilton, John Goerzen, Reto Hablützel, Juraj
 Hercek, Tomas Janousek, Spencer Janssen, Jochen Keil, Lennart
-Kolmodin, Krzysztof Kosciuszkiewicz, Dmitry Kurochkin, Svein Ove,
-Martin Perner, Jens Petersen, Petr Rockai, Andrew Sackville-West,
-Alexander Solovyov, John Soros, Artem Tarasov, Sergei Trofimovich,
-Thomas Tuegel, Jan Vornberger, Daniel Wagner and Norbert Zeh.
+Kolmodin, Krzysztof Kosciuszkiewicz, Dmitry Kurochkin, Dmitry Malikov,
+Edward O'Callaghan, Svein Ove, Martin Perner, Jens Petersen, Alexander
+Polakov, Petr Rockai, Peter Simons, Andrew Sackville-West, Alexander
+Solovyov, John Soros, Artem Tarasov, Sergei Trofimovich, Thomas
+Tuegel, Jan Vornberger, Daniel Wagner and Norbert Zeh.
 
 [incorporates patches]: http://www.ohloh.net/p/xmobar/contributors
 
