@@ -1,7 +1,7 @@
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Plugins.Monitors.Common
--- Copyright   :  (c) 2010, 2011 Jose Antonio Ortega Ruiz
+-- Copyright   :  (c) 2010, 2011, 2013 Jose Antonio Ortega Ruiz
 --                (c) 2007-2010 Andrea Rossato
 -- License     :  BSD-style (see LICENSE)
 --
@@ -35,6 +35,7 @@ module Plugins.Monitors.Common (
                        , getAfterString
                        , skipTillString
                        , parseTemplate
+                       , parseTemplate'
                        -- ** String Manipulation
                        -- $strings
                        , padString
@@ -301,19 +302,27 @@ templateParser = many templateStringParser --"%")
 parseTemplate :: [String] -> Monitor String
 parseTemplate l =
     do t <- getConfigValue template
-       s <- io $ runP templateParser t
        e <- getConfigValue export
        let m = Map.fromList . zip e $ l
-       return $ combine m s
+       parseTemplate' t m
 
--- | Given a finite "Map" and a parsed templatet produces the
--- | resulting output string.
-combine :: Map.Map String String -> [(String, String, String)] -> String
-combine _ [] = []
+-- | Parses the template given to it with a map of export values and combines
+-- them
+parseTemplate' :: String -> Map.Map String String -> Monitor String
+parseTemplate' t m =
+    do s <- io $ runP templateParser t
+       combine m s
+
+-- | Given a finite "Map" and a parsed template t produces the
+-- | resulting output string as the output of the monitor.
+combine :: Map.Map String String -> [(String, String, String)] -> Monitor String
+combine _ [] = return []
 combine m ((s,ts,ss):xs) =
-    s ++ str ++ ss ++ combine m xs
-        where str = Map.findWithDefault err ts m
-              err = "<" ++ ts ++ " not found!>"
+    do next <- combine m xs
+       let str = Map.findWithDefault err ts m
+           err = "<" ++ ts ++ " not found!>"
+       nstr <- parseTemplate' str m
+       return $ s ++ (if null nstr then str else nstr) ++ ss ++ next
 
 -- $strings
 

@@ -1,5 +1,5 @@
 name:               xmobar
-version:            0.17
+version:            0.18
 homepage:           http://projects.haskell.org/xmobar/
 bug-reports:        http://code.google.com/p/xmobar/issues
 synopsis:           A Minimalistic Text Based Status Bar
@@ -97,6 +97,7 @@ executable xmobar
     build-depends:
       base == 4.*,
       containers,
+      regex-compat,
       process,
       old-locale,
       bytestring,
