@@ -11,7 +11,7 @@ xmobar was inspired by the [Ion3] status bar, and supports similar
 features, like dynamic color management, icons, output templates, and
 extensibility through plugins.
 
-This page documents xmobar 0.17 (see [release notes]).
+This page documents xmobar 0.18 (see [release notes]).
 
 [This screenshot] shows xmobar running under [sawfish], with
 antialiased fonts. And [this one] is my desktop with [xmonad] and two
@@ -734,6 +734,7 @@ something like:
   (these options, being specific to the monitor, are to be specified
   after a `--` in the argument list):
   - `-O`: string for AC "on" status (default: "On")
+  - `-i`: string for AC "idle" status (default: "On")
   - `-o`: string for AC "off" status (default: "Off")
   - `-L`: low power (`watts`) threshold (default: -12)
   - `-H`: high power threshold (default: -10)
@@ -753,7 +754,7 @@ something like:
          Run BatteryP ["BAT0"]
                       ["-t", "<acstatus><watts> (<left>%)",
                        "-L", "10", "-H", "80", "-p", "3",
-                       "--", "-O", "<fc=green>On</fc> - ", "-o", "",
+                       "--", "-O", "<fc=green>On</fc> - ", "-i", "",
                        "-L", "-15", "-H", "-5",
                        "-l", "red", "-m", "blue", "-h", "green"]
                       600
@@ -763,6 +764,20 @@ something like:
   the separator affect how `<watts>` is displayed. For this monitor,
   neither the generic nor the specific options have any effect on
   `<timeleft>`.
+
+  It is also possible to specify template variables in the `-O` and
+  `-o` switches, as in the following example:
+
+         Run BatteryP ["BAT0"]
+                      ["-t", "<acstatus>"
+                      , "-L", "10", "-H", "80"
+                      , "-l", "red", "-h", "green"
+                      , "--", "-O", "Charging", "-o", "Battery: <left>%"
+                      ] 10
+
+- The "idle" AC state is selected whenever the AC power entering the
+  battery is zero.
+
 
 ### `TopProc Args RefreshRate`
 
@@ -1294,11 +1309,12 @@ the greater Haskell community.
 In particular, xmobar [incorporates patches] by Ben Boeckel, Roman
 Cheplyaka, Patrick Chilton, John Goerzen, Reto Hablützel, Juraj
 Hercek, Tomas Janousek, Spencer Janssen, Jochen Keil, Lennart
-Kolmodin, Krzysztof Kosciuszkiewicz, Dmitry Kurochkin, Dmitry Malikov,
-Edward O'Callaghan, Svein Ove, Martin Perner, Jens Petersen, Alexander
-Polakov, Petr Rockai, Peter Simons, Andrew Sackville-West, Alexander
-Solovyov, John Soros, Artem Tarasov, Sergei Trofimovich, Thomas
-Tuegel, Jan Vornberger, Daniel Wagner and Norbert Zeh.
+Kolmodin, Krzysztof Kosciuszkiewicz, Dmitry Kurochkin, Todd Lunter,
+Dmitry Malikov, Edward O'Callaghan, Svein Ove, Martin Perner, Jens
+Petersen, Alexander Polakov, Petr Rockai, Peter Simons, Andrew
+Sackville-West, Alexander Solovyov, John Soros, Artem Tarasov, Sergei
+Trofimovich, Thomas Tuegel, Jan Vornberger, Daniel Wagner and Norbert
+Zeh.
 
 [incorporates patches]: http://www.ohloh.net/p/xmobar/contributors
 
