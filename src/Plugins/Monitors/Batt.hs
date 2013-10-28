@@ -163,16 +163,18 @@ runBatt' bfs args = do
   case c of
     Result x w t s ->
       do l <- fmtPercent x
-         let ts = [fmtTime $ floor t, fmtWatts w opts suffix d]
-         parseTemplate (l ++ s:ts)
-    NA -> return "N/A"
+         ws <- fmtWatts w opts suffix d
+         parseTemplate (l ++ [s, fmtTime $ floor t, ws])
+    NA -> getConfigValue naString
   where fmtPercent :: Float -> Monitor [String]
         fmtPercent x = do
           let x' = minimum [1, x]
           p <- showPercentWithColors x'
           b <- showPercentBar (100 * x') x'
           return [b, p]
-        fmtWatts x o s d = color x o $ showDigits d x ++ (if s then "W" else "")
+        fmtWatts x o s d = do
+          ws <- showWithPadding $ showDigits d x ++ (if s then "W" else "")
+          return $ color x o ws
         fmtTime :: Integer -> String
         fmtTime x = hours ++ ":" ++ if length minutes == 2
                                     then minutes else '0' : minutes

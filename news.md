@@ -1,5 +1,48 @@
 % xmobar - Release notes
 
+## Version 0.19 (October 27, 2013)
+
+As of this release, the old bug tracker at Google code is deprecated.
+Please use [Github's tracker] for new bugs.
+
+_New features_
+
+  - New monitor `BatteryN`, a variant of `BatteryP` that lets you
+    specify the name of the monitor in the template.
+  - Support for configuration file living in `XDG_CONFIG_HOME` (see
+    [github #99]).
+  - `Com` uses safer `runInteractiveProcess` instead of spawning a
+    shell (David McLean).  If you're using shell expansion in your
+    `Com` (e.g. "~/bin/script") here's a workaround: `Run Com
+    "/bin/bash" ["-c", "~/bin/script"]` (cf. [github #127]).
+  - New plugin `UnsafeStdinReader` that allows actions from stdin.
+    Now it's possible to have clickable workspaces!
+    (Thiago Negri, see [github #125]).
+  - New monitor configuration option (`-x` or `--nastring`) that allows
+    specifying what string to display when a monitor is not available
+    (defaulting to "N/A"). Cf. [github #119].
+
+_Bug fixes_
+
+  - Using the width options `-w`, `-m` and `-M` in battery monitors
+    watts display ([github #118]).
+  - Using the `-d` option in `CoreTemp` ([github #115])
+  - Fix for systems not supporting PCRE regular expressions: we use
+    now BCEs, so regex-compat should be enough everywhere (see
+    [github #117]).
+  - Weather monitor: support for stations without name (Sergei
+    Trofimovich, [issue #65]).
+
+[Github's tracker]: https://github.com/jaor/xmobar/issues
+[github #99]: https://github.com/jaor/xmobar/issues/115
+[github #115]: https://github.com/jaor/xmobar/issues/115
+[github #117]: https://github.com/jaor/xmobar/issues/117
+[github #125]: https://github.com/jaor/xmobar/issues/125
+[issue #65]: http://code.google.com/p/xmobar/issues/detail?id=65
+[github #118]: https://github.com/jaor/xmobar/issues/118
+[github #119]: https://github.com/jaor/xmobar/issues/119
+[github #127]: https://github.com/jaor/xmobar/issues/127
+
 ## Version 0.18 (June 5, 2013)
 
 _New features_
