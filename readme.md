@@ -1,4 +1,4 @@
-% xmobar - A Minimalistic Text Based Status Bar
+% xmobar - a minimalistic status bar
 
 About
 =====
@@ -11,7 +11,7 @@ xmobar was inspired by the [Ion3] status bar, and supports similar
 features, like dynamic color management, icons, output templates, and
 extensibility through plugins.
 
-This page documents xmobar 0.18 (see [release notes]).
+This page documents xmobar 0.19 (see [release notes]).
 
 [This screenshot] shows xmobar running under [sawfish], with
 antialiased fonts. And [this one] is my desktop with [xmonad] and two
@@ -26,10 +26,13 @@ instances of xmobar.
 Bug Reports
 ===========
 
-To submit bug reports you can use the [bug tracker over at Google
-code] or send mail to our [Mailing list].
+To submit bug reports you can use the [bug tracker over at Github] or
+send mail to our [Mailing list].
 
-[bug tracker over at Google code]: http://code.google.com/p/xmobar/issues
+Note: the old bug tracker at Google code is deprecated.  Please use
+Github's for new bugs.
+
+[bug tracker over at Github]: https://github.com/jaor/xmobar/issues
 
 Installation
 ============
@@ -141,7 +144,9 @@ Otherwise, you'll need to install them yourself.
 
 `with_alsa`
 :    Support for ALSA sound cards. Enables the Volume plugin. Requires the
-     [alsa-mixer] package.
+     [alsa-mixer] package.  To install the latter, you'll need the
+     [libasound] C library and headers in your system (e.g., install
+     `libasound2-dev` in Debian-based systems).
 
 `with_datezone`
 :    Support for other timezones. Enables the DateZone plugin.
@@ -161,9 +166,11 @@ or
 
         xmobar &
 
-if you have the default configuration file saved as `~/.xmobarrc`
+if you have the default configuration file saved as
+`$XDG\_CONFIG\_HOME/xmobar/xmobarrc` (defaulting to
+`~/.config/xmobar/xmobarrc`), or `~/.xmobarrc`.
 
-### Signal Handling
+## Signal Handling
 
 Since 0.14 xmobar reacts to SIGUSR1 and SIGUSR2:
 
@@ -609,6 +616,10 @@ These are the options available for all monitors below:
     - Total number of characters used to draw bars.
     - Long option: `--bwidth`
     - Default value: 10
+- `-x` _string_ N/A string
+    - String to be used when the monitor is not available
+    - Long option: `--nastring`
+    - Default value: "N/A"
 
 Commands' arguments must be set as a list. E.g.:
 
@@ -671,7 +682,7 @@ something like:
 
 ### `Wireless Interface Args RefreshRate`
 
-- Aliases to the interface name with the suffix "wi": thus, `Wirelss
+- Aliases to the interface name with the suffix "wi": thus, `Wireless
   "wlan0" []` can be used as `%wlan0wi%`
 - Args: default monitor arguments
 - Variables that can be used with the `-t`/`--template` argument:
@@ -778,6 +789,11 @@ something like:
 - The "idle" AC state is selected whenever the AC power entering the
   battery is zero.
 
+### `BatteryN Dirs Args RefreshRate Alias`
+
+Works like `BatteryP`, but lets you specify an alias for the monitor
+other than "battery".  Useful in case you one separate monitors for
+more than one battery.
 
 ### `TopProc Args RefreshRate`
 
@@ -1101,18 +1117,35 @@ can be used in the output template as `%mydate%`
 
 ## Other Plugins
 
-`StdinReader`
+<font size="+1">**`StdinReader`**</font>
 
 - Aliases to StdinReader
 - Displays any text received by xmobar on its standard input.
+- Strips actions from the text received.  This means you can't pass dynamic
+  actions via stdin.  This is safer than `UnsafeStdinReader` because there is
+  no need to escape the content before passing it to xmobar's standard input.
 
-`Date Format Alias RefreshRate`
+<font size="+1">**`UnsafeStdinReader`**</font>
+
+- Aliases to UnsafeStdinReader
+- Displays any text received by xmobar on its standard input.
+- Will not do anything to the text received.  This means you can pass dynamic
+  actions via stdin.  Be careful to remove tags from dynamic text that you
+  pipe-thru to xmobar's standard input, e.g. window's title.  There is no way
+  to escape the tags, i.e. you can't print a literal `<action>` tag as a text
+  on xmobar.
+- Sample usage: send to xmobar's stdin the list of your workspaces enclosed by
+  actions tags that switches the workspaces to be able to switch workspaces by
+  clicking on xmobar:
+  `<action=xdotool key alt+1>ws1</action> <action=xdotool key alt+1>ws2</action>`
+
+<font size="+1">**`Date Format Alias RefreshRate`**</font>
 
 - Format is a time format string, as accepted by the standard ISO C
   `strftime` function (or Haskell's `formatCalendarTime`).
 - Sample usage: `Run Date "%a %b %_d %Y <fc=#ee9a00>%H:%M:%S</fc>" "date" 10`
 
-`DateZone Format Locale Zone Alias RefreshRate`
+<font size="+1">**`DateZone Format Locale Zone Alias RefreshRate`**</font>
 
 - Format is a time format string, as accepted by the standard ISO C
   `strftime` function (or Haskell's `formatCalendarTime`).
@@ -1125,45 +1158,49 @@ can be used in the output template as `%mydate%`
 - Sample usage:
   `Run DateZone "%a %H:%M:%S" "de_DE.UTF-8" "Europe/Vienna" "viennaTime" 10`
 
-`CommandReader "/path/to/program" Alias`
+<font size="+1">**`CommandReader "/path/to/program" Alias`**</font>
 
 - Runs the given program, and displays its standard output.
 
-`PipeReader "default text:/path/to/pipe" Alias`
+<font size="+1">**`PipeReader "default text:/path/to/pipe" Alias`**</font>
 
 - Reads its displayed output from the given pipe.
 - Prefix an optional default text separated by a colon
 
-`BufferedPipeReader  Alias [ (Timeout, Bool, "/path/to/pipe1")
-                           , (Timeout, Bool, "/path/to/pipe2")
-                           , ..
-                           ]`
+<font size="+1">
+**`BufferedPipeReader Alias [(Timeout, Bool, "/path/to/pipe1"), ..]`**
+</font>
 
 - Display data from multiple pipes.
-- Timeout (in tenth of seconds) is the value after which the previous content is
-  restored i.e. if there was already something from a previous pipe it will be
-  put on display again, overwriting the current status.
-- A pipe with Timout of 0 will be displayed permanently, just like `PipeReader`
-- The boolean option indicates whether new data for this pipe should make xmobar
-  appear (unhide, reveal). In this case, the Timeout additionally specifies when
-  the window should be hidden again. The output is restored in any case.
-- Use it for OSD like status bars e.g. for setting the volume or brightness:
+- Timeout (in tenth of seconds) is the value after which the previous
+  content is restored i.e. if there was already something from a
+  previous pipe it will be put on display again, overwriting the
+  current status.
+- A pipe with Timout of 0 will be displayed permanently, just like
+  `PipeReader`
+- The boolean option indicates whether new data for this pipe should
+  make xmobar appear (unhide, reveal). In this case, the Timeout
+  additionally specifies when the window should be hidden again. The
+  output is restored in any case.
+- Use it for OSD like status bars e.g. for setting the volume or
+  brightness:
 
         Run BufferedPipeReader "bpr"
             [ (  0, False, "/tmp/xmobar_window"  )
             , ( 15,  True, "/tmp/xmobar_status"  )
             ]
 
-  Have your window manager send window titles to `"/tmp/xmobar_window"`. They will
-  always be shown and not reveal your xmobar.
-  Sending some status information to `"/tmp/xmobar_status"` will reveal xmonad
-  for 1.5 seconds and temporarily overwrite the window titles.
+  Have your window manager send window titles to
+  `"/tmp/xmobar_window"`. They will always be shown and not reveal
+  your xmobar.  Sending some status information to
+  `"/tmp/xmobar_status"` will reveal xmonad for 1.5 seconds and
+  temporarily overwrite the window titles.
 - Take a look at [samples/status.sh]
 
 [samples/status.sh]: http://github.com/jaor/xmobar/raw/master/samples/status.sh
 
 
-`XMonadLog`
+<font size="+1">**`XMonadLog`**</font>
 
 - Aliases to XMonadLog
 - Displays information from xmonad's `_XMONAD_LOG`. You can set this
@@ -1302,20 +1339,20 @@ Authors and credits
 ===================
 
 Andrea Rossato originally designed and implemented xmobar up to
-version 0.11.1. Since then, it is maintained and developed by [Jose
-Antonio Ortega Ruiz](http://hacks-galore.org/jao/), with the help of
-the greater Haskell community.
+version 0.11.1. Since then, it is maintained and developed by [jao],
+with the help of the greater xmobar and Haskell communities.
 
 In particular, xmobar [incorporates patches] by Ben Boeckel, Roman
 Cheplyaka, Patrick Chilton, John Goerzen, Reto Hablützel, Juraj
 Hercek, Tomas Janousek, Spencer Janssen, Jochen Keil, Lennart
 Kolmodin, Krzysztof Kosciuszkiewicz, Dmitry Kurochkin, Todd Lunter,
-Dmitry Malikov, Edward O'Callaghan, Svein Ove, Martin Perner, Jens
-Petersen, Alexander Polakov, Petr Rockai, Peter Simons, Andrew
-Sackville-West, Alexander Solovyov, John Soros, Artem Tarasov, Sergei
-Trofimovich, Thomas Tuegel, Jan Vornberger, Daniel Wagner and Norbert
-Zeh.
+Dmitry Malikov, David McLean, Thiago Negri, Edward O'Callaghan, Svein
+Ove, Martin Perner, Jens Petersen, Alexander Polakov, Petr Rockai,
+Peter Simons, Andrew Sackville-West, Alexander Solovyov, John Soros,
+Artem Tarasov, Sergei Trofimovich, Thomas Tuegel, Jan Vornberger,
+Daniel Wagner and Norbert Zeh.
 
+[jao]: http://jao.io
 [incorporates patches]: http://www.ohloh.net/p/xmobar/contributors
 
 ## Thanks
@@ -1357,9 +1394,9 @@ License
 This software is released under a BSD-style license. See [LICENSE] for
 more details.
 
-Copyright &copy; 2007-2010 Andrea Rossato
+Copyright &copy; 2010-2013 Jose Antonio Ortega Ruiz
 
-Copyright &copy; 2010-2012 Jose Antonio Ortega Ruiz
+Copyright &copy; 2007-2010 Andrea Rossato
 
 [Github]: http://github.com/jaor/xmobar/
 [Github page]: http://github.com/jaor/xmobar
@@ -1371,6 +1408,7 @@ Copyright &copy; 2010-2012 Jose Antonio Ortega Ruiz
 [i3status]: http://i3wm.org/i3status/
 [i3status manual]: http://i3wm.org/i3status/manpage.html#_using_i3status_with_xmobar
 [iwlib]: http://www.hpl.hp.com/personal/Jean_Tourrilhes/Linux/Tools.html
+[libasound]: http://packages.debian.org/stable/libasound2-dev
 [hinotify]: http://hackage.haskell.org/package/hinotify/
 [libmpd]: http://hackage.haskell.org/package/libmpd/
 [dbus]: http://hackage.haskell.org/package/dbus
