@@ -1,5 +1,32 @@
 % xmobar - Release notes
 
+## Version 0.20 (March 10, 2014)
+
+_New features_
+
+  - Mouse actions now support multiple buttons, by Marcin Mikołajczyk.
+  - Non supported monitors are ignored in configuration files (see
+    [issue #139]), by Adam Vogt.
+
+_Bug fixes_
+
+  - `Disk` monitor now ignores non-existent devices (Reto Hablützel).
+  - `Weather` is now non-blocking and doesn't use curl (Ben Boeckel).
+  - Fix for `Memory` monitor in 3.14 kernels (Ben Boeckel).
+  - Fix for infinite loops in `AutoMPD` ([issue #76], [issue #111]).
+  - More robust AC readings in `BatteryP`.
+  - Fix for `Top` monitor's readings for processes whose name contains
+    blanks.
+  - Fixes for geometry computation on multihead (Dmitry Malikov).
+  - Fixes for missing XDG configuration (Thiago Negri and James McCoy,
+    see [issue #133]).
+  - Compatibility with latest `directory` (1.2.0.2).
+
+[issue #76]: https://github.com/jaor/xmobar/issues/76
+[issue #111]: https://github.com/jaor/xmobar/issues/111
+[issue #133]: https://github.com/jaor/xmobar/issues/133
+[issue #139]: https://github.com/jaor/xmobar/issues/133
+
 ## Version 0.19 (October 27, 2013)
 
 As of this release, the old bug tracker at Google code is deprecated.

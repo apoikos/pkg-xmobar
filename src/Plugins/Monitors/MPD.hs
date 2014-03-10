@@ -12,12 +12,13 @@
 --
 -----------------------------------------------------------------------------
 
-module Plugins.Monitors.MPD ( mpdConfig, runMPD, mpdWait ) where
+module Plugins.Monitors.MPD ( mpdConfig, runMPD, mpdWait, mpdReady ) where
 
 import Data.List
 import Plugins.Monitors.Common
 import System.Console.GetOpt
 import qualified Network.MPD as M
+import Control.Concurrent (threadDelay)
 
 mpdConfig :: IO MConfig
 mpdConfig = mkMConfig "MPD: <state>"
@@ -50,15 +51,28 @@ options =
 runMPD :: [String] -> Monitor String
 runMPD args = do
   opts <- io $ mopts args
-  let mpd = M.withMPD
-  status <- io $ mpd M.status
-  song <- io $ mpd M.currentSong
+  status <- io $ M.withMPD M.status
+  song <- io $ M.withMPD M.currentSong
   s <- parseMPD status song opts
   parseTemplate s
 
 mpdWait :: IO ()
-mpdWait = M.withMPD idle >> return ()
-  where idle = M.idle [M.PlayerS, M.MixerS]
+mpdWait = do
+  status <- M.withMPD $ M.idle [M.PlayerS, M.MixerS]
+  case status of
+    Left _ -> threadDelay 10000000
+    _ -> return ()
+
+mpdReady :: [String] -> Monitor Bool
+mpdReady _ = do
+  response <- io $ M.withMPD M.ping
+  case response of
+    Right _         -> return True
+    -- Only cases where MPD isn't responding is an issue; bogus information at
+    -- least won't hold xmobar up.
+    Left M.NoMPD    -> return False
+    Left M.TimedOut -> return False
+    Left _          -> return True
 
 mopts :: [String] -> IO MOpts
 mopts argv =
@@ -68,7 +82,7 @@ mopts argv =
 
 parseMPD :: M.Response M.Status -> M.Response (Maybe M.Song) -> MOpts
             -> Monitor [String]
-parseMPD (Left e) _ _ = return $ show e:repeat ""
+parseMPD (Left e) _ _ = return $ show e:replicate 18 ""
 parseMPD (Right st) song opts = do
   songData <- parseSong song
   bar <- showPercentBar (100 * b) b
